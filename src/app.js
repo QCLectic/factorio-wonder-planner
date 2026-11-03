@@ -37,8 +37,35 @@
   for (const r of Object.values(data.recipes)) for (const p of r.results || []) craftable.add(p.name);
   for (const r of Object.values(data.resources || {})) for (const p of (r.results || [])) craftable.add(p.name);
   const names = [...craftable].filter((n) => data.items[n] || data.fluids[n]).sort();
-  $('items').innerHTML = names.map((n) => `<option value="${n}">${pretty(n)}</option>`).join('');
+  $('items').innerHTML = names.map((n) => `<option value="${pretty(n)}"></option>`).join('');
+  const norm = (t) => String(t).toLowerCase().replace(/[-_\s]+/g, ' ').trim();
+  const byNorm = new Map(names.map((n) => [norm(n), n]));
+  // Items whose name starts with the text come first, then items that contain it.
+  function matchItems(text, limit) {
+    const q = norm(text);
+    if (!q) return [];
+    const starts = [], has = [];
+    for (const n of names) { const k = norm(n); if (k.startsWith(q)) starts.push(n); else if (k.includes(q)) has.push(n); }
+    return starts.concat(has).slice(0, limit || 8);
+  }
+  function resolveItem(text) {
+    const q = norm(text);
+    if (byNorm.has(q)) return byNorm.get(q);
+    const m = matchItems(text, 2);
+    return m.length === 1 ? m[0] : null;
+  }
+  const EXAMPLES = ['chemical-science-pack', 'utility-science-pack', 'rocket-part', 'electric-furnace', 'processing-unit'];
+  const esc2 = (t) => String(t).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+  function showMessage(html) {
+    svg.innerHTML = '';
+    lay = null;
+    $('pane-plan').innerHTML = html;
+    for (const b of $('pane-plan').querySelectorAll('[data-pick]')) b.addEventListener('click', () => { $('item').value = pretty(b.dataset.pick); run(); });
+  }
+  const chips = (ids) => ids.map((n) => `<button class="sm chip" data-pick="${n}">${pretty(n)}</button>`).join(' ');
 
+  const offsets = {};
+  let lastFitKey = '';
   let plan = null, gp = null, lay = null, selected = null, vb = { x: 0, y: 0, w: 1000, h: 600 };
   const svg = $('svg');
 
@@ -75,9 +102,17 @@
 
   function run() {
     saveSoon();
-    const item = $('item').value.trim();
+    const text = $('item').value.trim();
+    const item = resolveItem(text);
     const r = Number($('rate').value) / unitMul();
-    if (!names.includes(item) || !(r > 0)) { svg.innerHTML = ''; $('pane-plan').innerHTML = '<p class="note">Pick an item and a rate.</p>'; return; }
+    if (!text) { showMessage(`<h2>Start here</h2><p class="note">Type the item you want to make, then a rate. Try one of these:</p><p>${chips(EXAMPLES)}</p>`); return; }
+    if (!item) {
+      const m = matchItems(text);
+      showMessage(`<p class="warn">No item matches "${esc2(text)}".</p>` + (m.length ? `<p class="note">Did you mean:</p><p>${chips(m)}</p>` : '<p class="note">Check the spelling. Items from mods are not supported.</p>'));
+      return;
+    }
+    if (!(r > 0)) { showMessage('<p class="warn">Enter a rate above 0.</p>'); return; }
+    if ($('item').value !== pretty(item)) $('item').value = pretty(item);
     const t0 = performance.now();
     const keep = selected;
     plan = FPSolver.solve(data, { item, rate: r, settings: solverSettings() });
@@ -87,9 +122,16 @@
     gp = FPGroups.groupPlan(plan, gs, data, { prefer: cfg.source || 'nauvis' });
     cfg.groups.state = gp.state;
     lay = FPLayout.layout(cfg.view === 'groups' ? gp.plan : plan);
+    // A new target or view starts from the automatic layout. Otherwise moved boxes stay where they are.
+    const fitKey = item + '|' + cfg.view;
+    const fresh = fitKey !== lastFitKey;
+    lastFitKey = fitKey;
+    if (fresh) for (const k of Object.keys(offsets)) delete offsets[k];
+    for (const n of lay.nodes) { n.baseY = n.y; if (offsets[n.id]) n.y += offsets[n.id]; }
+    if (Object.keys(offsets).length) lay.edges = FPLayout.route(lay.nodes, lay.links, lay.back);
     plan.ms = performance.now() - t0;
     selected = keep && lay.nodes.some((n) => n.id === keep) ? keep : null;
-    draw(!keep);
+    draw(fresh);
     summary();
     groupsPanel();
   }
@@ -166,6 +208,8 @@
     g.append(eg, ng, lg);
     const maxRate = Math.max(...lay.edges.map((e) => e.link.rate), 1e-9);
     const hl = new Set();
+    edgeEls = [];
+    nodeEls = new Map();
     if (selected) for (const e of lay.edges) if (e.link.from === selected || e.link.to === selected) hl.add(e);
     lay.edges.forEach((e) => {
       const w = 1.2 + 5 * Math.sqrt(e.link.rate / maxRate);
@@ -173,10 +217,13 @@
       p.appendChild(el('title', {}, `${pretty(e.link.item)}: ${rate(e.link.rate)}${unitName()}` +
         (e.link.cross ? ` (import ${pretty(e.link.fromPlanet)} to ${pretty(e.link.toPlanet)})` : '')));
       eg.appendChild(p);
+      let label = null;
       if (showLabels || hl.has(e)) {
         const mx = (e.sx + e.tx) / 2, my = (e.sy + e.ty) / 2;
-        lg.appendChild(el('text', { x: mx, y: my - 3, 'text-anchor': 'middle', class: 'elabel' }, `${pretty(e.link.item)} ${rate(e.link.rate)}${e.link.cross ? ' [import]' : ''}`));
+        label = el('text', { x: mx, y: my - 3, 'text-anchor': 'middle', class: 'elabel' }, `${pretty(e.link.item)} ${rate(e.link.rate)}${e.link.cross ? ' [import]' : ''}`);
+        lg.appendChild(label);
       }
+      edgeEls.push({ path: p, label });
     });
     for (const n of lay.nodes) {
       const grp = el('g', { class: 'node' + (n.id === selected ? ' sel' : ''), transform: `translate(${n.x},${n.y})` });
@@ -192,11 +239,44 @@
       grp.appendChild(el('text', { x: 10, y: 20, class: 't1' }, t1));
       if (t2) grp.appendChild(el('text', { x: 10, y: 37, class: 't2' }, t2));
       if (t3) grp.appendChild(el('text', { x: 10, y: 53, class: 't2' }, t3));
-      grp.addEventListener('click', (ev) => { ev.stopPropagation(); selected = selected === n.id ? null : n.id; draw(false); summary(); });
+      grp.setAttribute('tabindex', '0');
+      grp.setAttribute('role', 'button');
+      grp.setAttribute('aria-label', `${t1}, ${t2 || ''}. Enter selects. Arrow up and down move the box.`);
+      const choose = () => { selected = selected === n.id ? null : n.id; draw(false); summary(); };
+      grp.addEventListener('click', (ev) => { ev.stopPropagation(); if (suppressClick) { suppressClick = false; return; } choose(); });
+      grp.addEventListener('pointerdown', (ev) => {
+        if (ev.button) return;
+        ev.stopPropagation();
+        suppressClick = false;
+        nd = { id: n.id, y0: n.y, py: ev.clientY, moved: false, pid: ev.pointerId, el: grp };
+      });
+      grp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); choose(); }
+        else if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') { ev.preventDefault(); moveNode(n.id, n.y + (ev.key === 'ArrowUp' ? -24 : 24)); }
+      });
+      nodeEls.set(n.id, grp);
       ng.appendChild(grp);
     }
-    if (fit) { vb = { x: 0, y: 0, w: lay.width, h: lay.height }; fitAspect(); }
+    if (fit) fitView();
     setVB();
+  }
+
+  // Move one box up or down. Only the box and the edges that touch it change.
+  let edgeEls = [], nodeEls = new Map(), nd = null, suppressClick = false;
+  function moveNode(id, y) {
+    const n = lay.nodes.find((x) => x.id === id);
+    if (!n) return;
+    n.y = Math.max(-60, Math.min(lay.height + 200, y));
+    offsets[id] = n.y - (n.baseY != null ? n.baseY : n.y);
+    const g = nodeEls.get(id);
+    if (g) g.setAttribute('transform', `translate(${n.x},${n.y})`);
+    lay.edges = FPLayout.route(lay.nodes, lay.links, lay.back);
+    lay.edges.forEach((e, i) => {
+      const o = edgeEls[i];
+      if (!o) return;
+      o.path.setAttribute('d', e.d);
+      if (o.label) { o.label.setAttribute('x', (e.sx + e.tx) / 2); o.label.setAttribute('y', (e.sy + e.ty) / 2 - 3); }
+    });
   }
 
   function nodeText(n) {
@@ -215,7 +295,11 @@
     const u = unitName();
     const rows = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1])
       .map(([k, v]) => `<tr><td>${pretty(k)}</td><td>${rate(v)}${u}</td></tr>`).join('') || '<tr><td class="note">none</td><td></td></tr>';
-    let h = `<h2>Plan</h2><table>
+    const realNodes = plan.nodes.filter((n) => n.kind !== 'external');
+    let banner = '';
+    if (!realNodes.length) banner += `<p class="warn">Nothing to plan. ${pretty(plan.target)} has no recipe, mine or pump in the game data, so it is only an external input.</p>`;
+    if (plan.target === 'spoilage' || plan.nodes.some((n) => n.inputs.spoilage || n.outputs.spoilage)) banner += '<p class="warn">This plan involves Gleba spoilage, which is not supported. Treat it as incomplete.</p>';
+    let h = `${banner}<h2>Plan</h2><table>
       <tr><td>Target</td><td>${pretty(plan.target)} ${rate(plan.rate)}${u}</td></tr>
       <tr><td>Electric power</td><td>${power(plan.powerW)}</td></tr>
       ${plan.fuelW ? `<tr><td>Burner fuel</td><td>${power(plan.fuelW)}</td></tr>` : ''}
@@ -461,14 +545,38 @@
     $('pane-grp').hidden = t !== 'grp';
   });
 
-  // Pan and zoom by changing the viewBox.
-  function fitAspect() {
+  // Pan and zoom by changing the viewBox. The start view never goes below MIN_SCALE, so the
+  // labels stay readable. A big plan then starts at its left edge and the user pans. Fit shows all.
+  const MIN_SCALE = 0.75;
+  function fitView(all) {
     const r = svg.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    const k = Math.max(vb.w / r.width, vb.h / r.height);
-    vb.x -= (r.width * k - vb.w) / 2; vb.y -= (r.height * k - vb.h) / 2;
-    vb.w = r.width * k; vb.h = r.height * k;
+    if (!r.width || !r.height || !lay) return;
+    const k = Math.max(lay.width / r.width, lay.height / r.height);
+    const kk = all ? k : Math.min(k, 1 / MIN_SCALE);
+    vb.w = r.width * kk; vb.h = r.height * kk;
+    vb.x = kk < k ? 0 : (lay.width - vb.w) / 2;
+    vb.y = (lay.height - vb.h) / 2;
   }
+  function zoomBy(f) {
+    const cx = vb.x + vb.w / 2, cy = vb.y + vb.h / 2;
+    vb = { x: cx - vb.w * f / 2, y: cy - vb.h * f / 2, w: vb.w * f, h: vb.h * f };
+    setVB();
+  }
+  $('zin').addEventListener('click', () => zoomBy(1 / 1.25));
+  $('zout').addEventListener('click', () => zoomBy(1.25));
+  $('zfit').addEventListener('click', () => { fitView(true); setVB(); });
+  $('zone').addEventListener('click', () => {
+    const r = svg.getBoundingClientRect(), cx = vb.x + vb.w / 2, cy = vb.y + vb.h / 2;
+    vb = { x: cx - r.width / 2, y: cy - r.height / 2, w: r.width, h: r.height };
+    setVB();
+  });
+  $('zreset').addEventListener('click', () => {
+    if (!lay) return;
+    for (const k of Object.keys(offsets)) delete offsets[k];
+    for (const n of lay.nodes) n.y = n.baseY != null ? n.baseY : n.y;
+    lay.edges = FPLayout.route(lay.nodes, lay.links, lay.back);
+    draw(false);
+  });
   const setVB = () => svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
   svg.addEventListener('wheel', (ev) => {
     ev.preventDefault();
@@ -482,6 +590,15 @@
   // Capture the pointer only once the mouse moves, so a plain click still reaches the box under it.
   svg.addEventListener('pointerdown', (ev) => { drag = { x: ev.clientX, y: ev.clientY, vb: { ...vb }, moved: false, id: ev.pointerId }; });
   svg.addEventListener('pointermove', (ev) => {
+    if (nd) {
+      const dy = ev.clientY - nd.py;
+      if (!nd.moved) {
+        if (Math.abs(dy) < 4) return;
+        nd.moved = true; nd.el.setPointerCapture(nd.pid);
+      }
+      moveNode(nd.id, nd.y0 + dy * vb.h / svg.getBoundingClientRect().height);
+      return;
+    }
     if (!drag) return;
     if (!drag.moved) {
       if (Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 4) return;
@@ -492,9 +609,9 @@
     vb.y = drag.vb.y - (ev.clientY - drag.y) / r.height * vb.h;
     setVB();
   });
-  svg.addEventListener('pointerup', () => { drag = null; svg.classList.remove('drag'); });
+  svg.addEventListener('pointerup', () => { if (nd && nd.moved) suppressClick = true; nd = null; drag = null; svg.classList.remove('drag'); });
   svg.addEventListener('click', () => { if (selected) { selected = null; draw(false); summary(); } });
-  window.addEventListener('resize', () => { if (lay) { vb = { x: 0, y: 0, w: lay.width, h: lay.height }; fitAspect(); setVB(); } });
+  window.addEventListener('resize', () => { if (lay) { fitView(); setVB(); } });
 
   // ---- State: URL hash, JSON export and import (step 8) ----
   // One state object holds every user choice. It is saved in the URL hash as "#s=" + a code:
@@ -517,7 +634,7 @@
     };
     if (cfg.limitResearch) c.researched = [...cfg.researched];
     if (cfg.groups.manual && cfg.groups.state) c.groups = cfg.groups.state;
-    return { v: STATE_VERSION, item: $('item').value.trim(), rate: Number($('rate').value), unit: $('unit').value, labels: $('labels').checked, cfg: c };
+    return { v: STATE_VERSION, item: resolveItem($('item').value) || '', rate: Number($('rate').value), unit: $('unit').value, labels: $('labels').checked, cfg: c };
   }
 
   function cleanSpec(x) {
@@ -570,7 +687,7 @@
   }
 
   function applyState(o) {
-    if (o.item) $('item').value = o.item;
+    if (o.item) $('item').value = pretty(o.item);
     $('rate').value = o.rate; $('unit').value = o.unit; $('labels').checked = o.labels;
     Object.assign(cfg, {
       machineByCategory: o.machineByCategory, machines: o.machines, drill: o.drill, limitResearch: o.limitResearch,
@@ -631,7 +748,7 @@
     const blob = new Blob([JSON.stringify(getState(), null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `factorio-plan-${$('item').value || 'plan'}.json`;
+    a.download = `factorio-plan-${resolveItem($('item').value) || 'plan'}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
@@ -668,7 +785,7 @@
   for (const id of ['item', 'rate', 'unit']) $(id).addEventListener('change', run);
   settingsPanel();
   $('labels').addEventListener('change', () => lay && draw(false));
-  $('item').value = 'chemical-science-pack';
+  $('item').value = pretty('chemical-science-pack');
   loadHash().then((ok) => { if (!ok) run(); });
   window.__fp = { run, get plan() { return plan; } };
 })();

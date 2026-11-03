@@ -9,6 +9,30 @@
   'use strict';
   const BOX_W = 210, GAP_X = 120, GAP_Y = 24, PORT = 13, MIN_H = 64, PAD = 30;
 
+  // Edge paths for the current node positions. Ports on a box are ordered by the height of the
+  // other end. The app calls this again after the user moves a box.
+  function route(nodes, links, back) {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const outs = new Map(nodes.map((n) => [n.id, []]));
+    const ins = new Map(nodes.map((n) => [n.id, []]));
+    links.forEach((l, i) => { outs.get(l.from).push(i); ins.get(l.to).push(i); });
+    const cy = (id) => byId.get(id).y + byId.get(id).h / 2;
+    const portY = new Map();
+    for (const n of nodes) {
+      outs.get(n.id).sort((a, b) => cy(links[a].to) - cy(links[b].to));
+      ins.get(n.id).sort((a, b) => cy(links[a].from) - cy(links[b].from));
+      outs.get(n.id).forEach((li, k) => portY.set('o' + li, n.y + n.h * (k + 1) / (outs.get(n.id).length + 1)));
+      ins.get(n.id).forEach((li, k) => portY.set('i' + li, n.y + n.h * (k + 1) / (ins.get(n.id).length + 1)));
+    }
+    return links.map((l, i) => {
+      const a = byId.get(l.from), b = byId.get(l.to);
+      const sx = a.x + a.w, sy = portY.get('o' + i), tx = b.x, ty = portY.get('i' + i);
+      const dx = Math.max(50, Math.abs(tx - sx) / 2);
+      const d = `M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}`;
+      return { link: l, sx, sy, tx, ty, d, back: back.has(l.from + '>' + l.to) };
+    });
+  }
+
   function layout(plan) {
     const nodes = plan.nodes.map((n) => ({ id: n.id, ref: n }));
     if (plan.links.some((l) => l.to === 'target')) nodes.push({ id: 'target', ref: { kind: 'target', name: plan.target } });
@@ -102,26 +126,11 @@
     height = maxH + PAD * 2;
     const width = nLayers * (BOX_W + GAP_X) - GAP_X + PAD * 2;
 
-    // Ports, sorted by the vertical position of the other end.
-    const cy = (id) => byId.get(id).y + byId.get(id).h / 2;
-    const portY = new Map();
-    for (const n of nodes) {
-      outs.get(n.id).sort((a, b) => cy(links[a].to) - cy(links[b].to));
-      ins.get(n.id).sort((a, b) => cy(links[a].from) - cy(links[b].from));
-      outs.get(n.id).forEach((li, k) => portY.set('o' + li, n.y + n.h * (k + 1) / (outs.get(n.id).length + 1)));
-      ins.get(n.id).forEach((li, k) => portY.set('i' + li, n.y + n.h * (k + 1) / (ins.get(n.id).length + 1)));
-    }
-    const edges = links.map((l, i) => {
-      const a = byId.get(l.from), b = byId.get(l.to);
-      const sx = a.x + a.w, sy = portY.get('o' + i), tx = b.x, ty = portY.get('i' + i);
-      const dx = Math.max(50, Math.abs(tx - sx) / 2);
-      const d = `M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}`;
-      return { link: l, sx, sy, tx, ty, d, back: back.has(l.from + '>' + l.to) };
-    });
-    return { nodes, edges, width, height };
+    const edges = route(nodes, links, back);
+    return { nodes, edges, links, back, width, height };
   }
 
-  const api = { layout, BOX_W };
+  const api = { layout, route, BOX_W };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FPLayout = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

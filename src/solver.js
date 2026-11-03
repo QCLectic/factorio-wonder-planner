@@ -311,12 +311,15 @@
       const consFactor = Math.max(DEFAULTS.minConsumptionFactor, 1 + bonus.consumption);
       const prod = (d.base_productivity || 0) + bonus.productivity;
       for (const k of Object.keys(out)) out[k] *= 1 + prod;
+      // These notes belong to the mine, so buildPlan adds them only when the plan uses it.
+      const mineNotes = [];
       if (mn.required_fluid) {
-        notes.push(`${name}: needs ${mn.required_fluid} to mine (fluid_amount ${mn.fluid_amount}); ` +
+        mineNotes.push(`${name}: needs ${mn.required_fluid} to mine (fluid_amount ${mn.fluid_amount}); ` +
           'the unit of fluid_amount is not documented, so this input is NOT modeled');
       }
-      if (res.infinite) notes.push(`${name}: assumes 100% yield (${Object.values(out)[0]}/operation)`);
+      if (res.infinite) mineNotes.push(`${name}: assumes 100% yield (${Object.values(out)[0]}/operation)`);
       acts.push({
+        mineNotes,
         id: 'mine:' + name, kind: 'mine', name, machine, machineData: d,
         inputs: {}, outputs: out,
         secondsPerCraft: mn.mining_time / (d.mining_speed * speedFactor),
@@ -452,6 +455,7 @@
         }
       }
       if (a.beaconW) { node.beaconW = machines * a.beaconW; node.powerW += node.beaconW; }
+      if (a.mineNotes) notes.push(...a.mineNotes);
       nodes.push(node);
     });
 

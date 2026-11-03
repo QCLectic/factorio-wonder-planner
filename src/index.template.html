@@ -45,6 +45,11 @@ summary { cursor: pointer; font-weight: 600; }
 label.sm { padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); }
 dialog { max-width: 560px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
 dialog h2, dialog h3 { margin: 8px 0 4px; }
+#zoom { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.node:focus { outline: none; }
+.node:focus-visible .box { stroke: var(--accent); stroke-width: 2.5; }
+.node { touch-action: none; }
+.chip { margin: 2px 2px 2px 0; }
 button.sm { font: inherit; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); cursor: pointer; }
 .box.group { stroke-width: 1.6; }
 .note { color: var(--muted); font-size: 12px; margin: 4px 0; }
@@ -62,13 +67,13 @@ button.sm { font: inherit; padding: 2px 8px; border: 1px solid var(--line); bord
 .edge.hl { stroke: var(--accent); opacity: 1; }
 .elabel { font-size: 10.5px; fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; pointer-events: none; }
 .hint { position: absolute; left: 12px; bottom: 8px; color: var(--muted); font-size: 12px; }
-@media (max-width: 800px) { main { flex-direction: column; } aside { width: auto; max-height: 40%; border-left: 0; border-top: 1px solid var(--line); } }
+@media (max-width: 800px) { .hint { display: none; } header { gap: 6px 8px; padding: 6px 10px; } header button.sm, header label.sm { padding: 2px 6px; font-size: 12px; } main { flex-direction: column; } aside { width: auto; max-height: 40%; border-left: 0; border-top: 1px solid var(--line); } }
 </style>
 </head>
 <body>
 <header>
   <h1>Factorio Planner</h1>
-  <label>Item <input id="item" list="items" placeholder="e.g. chemical-science-pack" autocomplete="off"></label>
+  <label>Item <input id="item" list="items" placeholder="e.g. Chemical science pack" autocomplete="off"></label>
   <datalist id="items"></datalist>
   <label>Rate <input id="rate" type="number" min="0" step="any" value="1"></label>
   <select id="unit"><option value="1">/s</option><option value="60">/min</option><option value="3600">/h</option></select>
@@ -85,7 +90,14 @@ button.sm { font: inherit; padding: 2px 8px; border: 1px solid var(--line); bord
 <main>
   <div id="view">
     <svg id="svg"></svg>
-    <div class="hint">Drag to pan. Wheel to zoom. Click a box to see its links.</div>
+    <div id="zoom">
+      <button class="sm" id="zin" aria-label="Zoom in" title="Zoom in">+</button>
+      <button class="sm" id="zout" aria-label="Zoom out" title="Zoom out">&minus;</button>
+      <button class="sm" id="zfit" title="Show the whole plan">Fit</button>
+      <button class="sm" id="zone" title="Actual size">1:1</button>
+      <button class="sm" id="zreset" title="Put moved boxes back">Reset boxes</button>
+    </div>
+    <div class="hint">Drag the background to pan. Drag a box up or down to move it. Wheel or the buttons zoom. Click a box to see its links.</div>
   </div>
   <aside>
     <nav id="tabs"><button data-tab="plan" class="on">Plan</button><button data-tab="grp">Groups</button><button data-tab="set">Settings</button></nav>
