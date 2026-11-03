@@ -27,6 +27,18 @@ node tests/groups.test.js
 
 The build inlines `data/data.json` and the files in `src/` into `dist/factorio-planner.html`. For GitHub Pages, build to `docs/index.html` with `python -I tools/build_html.py docs/index.html` and commit it.
 
+## Compare with your factory (Factory tab)
+
+The planner can compare a plan with a real save. It needs Factorio installed and Python 3.
+
+```bash
+python -I tools/export_save.py "path/to/save.zip" export.json
+```
+
+Then open the Factory tab and import `export.json`. The tab shows planned and built machines per recipe, their status (working, starved, output full, low power, depleted), a trace of the inputs for starved machines, and measured production against the plan.
+
+How it stays safe: the script copies the save, runs the game in benchmark mode with a private config and a private data folder, and deletes everything afterward. Your saves, mods and settings are not used or changed. The copy loads with a small script mod, which would disable achievements in a normal session, so only ever use this tool, not that mod, on a save you play. The file stays in the page and is not put in the link. Saves with mods other than the five official ones are not supported yet.
+
 ## Update the game data
 
 1. Run `factorio --dump-data`. It writes `script-output/data-raw-dump.json` in the Factorio user data folder.

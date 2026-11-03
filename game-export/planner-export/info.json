@@ -1,0 +1,9 @@
+{
+  "name": "planner-export",
+  "version": "0.1.0",
+  "title": "Planner export",
+  "author": "factorio-wonder-planner",
+  "description": "Writes the machines and production statistics of a save to script-output/planner-export.json. For use with tools/export_save.py on a COPY of a save. Do not enable it for a save you want to keep achievements on.",
+  "factorio_version": "2.1",
+  "dependencies": ["base >= 2.0.0"]
+}

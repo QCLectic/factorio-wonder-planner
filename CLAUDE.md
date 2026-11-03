@@ -51,7 +51,11 @@ The first user is Q. The later goal is a public web tool for sharing.
 - Data to read: machines with recipe, modules, and status (working, no ingredients, output full, no power). Production statistics per item. Power use.
 - Troubleshooter ideas: compare actual machine counts to solver counts. Flag starved machines and trace them to the missing item. Compare measured flow to planned flow on each link.
 - Limit: the script sees machines and flows. It does not see belt or train bottlenecks.
-- Not yet verified: whether a script on a save copy affects achievements. Not yet verified: the exact Lua API calls on 2.1.24. Check the API docs before writing the script.
+- Built (step 10, first version): `tools/export_save.py` copies a save, runs the game with `--benchmark` on the copy, using a private `--config` whose write-data folder is a temp folder, and the mod `game-export/planner-export`. The mod waits 300 ticks, then writes machine groups (surface, machine, quality, recipe, modules, beacons, status counts) and item production stats to JSON. The Factory tab imports it and compares with the plan. About 14 seconds for a 15 MB save at tick 23.7 million. Checked on `ToSPACE2.zip`: 1106 machines. The original save and Q's real Factorio folder were not changed (file times checked, script-output unchanged).
+- Lua calls were checked against the 2.1.24 runtime docs, then run for real. Only `products_finished` failed on non-crafting machines, and that is fixed.
+- Achievements: not tested, and cannot be from here. The design avoids the question: only a copy is loaded, with an isolated user folder, and nothing is saved. Q should still not run it on a save they play.
+- Limits: status is read once after 300 ticks, so it is a snapshot (power and "output full" can be momentary). Only the five official mods are supported. Belts, trains and logistics are not read. Machine counts compare by recipe name across all surfaces unless a surface is picked. A plan for one target rarely equals a whole factory, so "built, not in this plan" is normal.
+- Not done: seeding group proposals from the machines in the save, comparing measured flow per link, labs, power, and reading beacons or modules into the plan settings.
 - Also feeds group proposals (step 6): machines in the save can seed groups.
 
 ## Data

@@ -55,6 +55,7 @@ dialog h2, dialog h3 { margin: 8px 0 4px; }
 .xrow { display: flex; align-items: center; gap: 6px; }
 .xitem { width: 230px; }
 .xrate { width: 90px; }
+pre.cmd { background: var(--bg); border: 1px solid var(--line); border-radius: 2px; padding: 6px; margin: 4px 0; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
 button.sm { font: inherit; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); cursor: pointer; }
 .box.group { stroke-width: 1.6; }
 .note { color: var(--muted); font-size: 12px; margin: 4px 0; }
@@ -107,10 +108,11 @@ button.sm { font: inherit; padding: 2px 8px; border: 1px solid var(--line); bord
     <div class="hint">Drag the background to pan. Drag a box up or down to move it. Wheel or the buttons zoom. Click a box to see its links.</div>
   </div>
   <aside>
-    <nav id="tabs"><button data-tab="plan" class="on">Plan</button><button data-tab="grp">Groups</button><button data-tab="set">Settings</button></nav>
+    <nav id="tabs"><button data-tab="plan" class="on">Plan</button><button data-tab="grp">Groups</button><button data-tab="set">Settings</button><button data-tab="fac">Factory</button></nav>
     <div id="pane-plan"></div>
     <div id="pane-grp" hidden></div>
     <div id="pane-set" hidden></div>
+    <div id="pane-fac" hidden></div>
   </aside>
 </main>
 <dialog id="about">
