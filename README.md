@@ -37,6 +37,8 @@ python -I tools/export_save.py "path/to/save.zip" export.json
 
 Then open the Factory tab and import `export.json`. The tab shows planned and built machines per recipe, their status (working, starved, output full, low power, depleted), a trace of the inputs for starved machines, and measured production against the plan.
 
+After you import an export, the Groups tab has **Seed from my save**. It cuts your machines into blocks by distance (default 25 tiles, adjustable), gives each plan recipe to the block that holds most of its machines, and names each group from its main recipes. Each group takes the planet of the surface its block is on. Plan nodes you have not built follow their consumer.
+
 How it stays safe: the script copies the save, runs the game in benchmark mode with a private config and a private data folder, and deletes everything afterward. Your saves, mods and settings are not used or changed. The copy loads with a small script mod, which would disable achievements in a normal session, so only ever use this tool, not that mod, on a save you play. The file stays in the page and is not put in the link. Saves with mods other than the five official ones are not supported yet.
 
 ## Update the game data

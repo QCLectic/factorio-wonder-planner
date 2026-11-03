@@ -167,6 +167,7 @@
 
   // Groups tab: propose, rename, move machines, merge, delete.
   const openGroups = new Set();
+  let seedNote = '';
   function editGroups(fn) {
     const s = cfg.groups.state;
     const st = { assign: Object.assign({}, s.assign), names: Object.assign({}, s.names), order: s.order.slice(), planet: Object.assign({}, s.planet) };
@@ -200,12 +201,23 @@
       <h2>Proposal</h2>
       <div class="row"><select id="grule"><option value="chain"${cfg.groups.rule === 'chain' ? ' selected' : ''}>By product chain</option><option value="category"${cfg.groups.rule === 'category' ? ' selected' : ''}>By machine type</option></select>
       <button class="sm" id="gprop">Propose</button></div>
+      ${factory ? '<div class="row"><button class="sm" id="gseed" title="Group the plan by where you built things in your save">Seed from my save</button><label title="Machines closer than this many tiles count as one block. Larger gives fewer, bigger groups.">Block distance <input id="gseedeps" type="number" min="3" max="200" value="${FPSeed.EPS}" style="width:64px"> tiles</label></div>' : '<p class="note">Import a save export in the Factory tab to seed groups from where you built things.</p>'}
+      ${seedNote ? `<p class="note">${esc(seedNote)}</p>` : ''}
       <p class="note">${cfg.groups.manual ? 'You edited the groups. New machines stay ungrouped until you press Propose.' : 'Groups follow the plan automatically until you edit them.'}</p>
       <p class="note">Product chain: a machine joins the group of its only consumer. A machine with two or more consumers starts its own group. Machine type: one group per kind of work.</p>
       <h2>Groups</h2>${groupRows || '<p class="note">none</p>'}
       ${loose.length ? `<h2>Ungrouped</h2>${loose.map((n) => `<div class="row"><span>${nodeLabel(n)}</span><select data-move="${n.id}" data-from="">${moveOpts('')}</select></div>`).join('')}` : ''}`;
     $('grule').addEventListener('change', (ev) => { cfg.groups.rule = ev.target.value; if (!cfg.groups.manual) run(); });
-    $('gprop').addEventListener('click', () => { cfg.groups.manual = false; run(); });
+    $('gprop').addEventListener('click', () => { cfg.groups.manual = false; seedNote = ''; run(); });
+    if ($('gseed')) $('gseed').addEventListener('click', () => {
+      const base = FPGroups.propose(plan, cfg.groups.rule, data);
+      const eps = Math.max(3, Math.min(200, Number($('gseedeps').value) || FPSeed.EPS));
+      const r = FPSeed.seed(plan, factory, base, data, { eps });
+      cfg.groups.manual = true;
+      cfg.groups.state = r.state;
+      seedNote = `Seeded ${r.report.groups} groups from ${r.report.blocks} blocks in your save. ${r.report.unbuilt} plan nodes have no built machine and follow their consumer.`;
+      run();
+    });
     for (const d of pane.querySelectorAll('details')) d.addEventListener('toggle', () => { if (d.open) openGroups.add(d.dataset.g); else openGroups.delete(d.dataset.g); });
     for (const i of pane.querySelectorAll('[data-gname]')) i.addEventListener('change', () => editGroups((s) => { s.names[i.dataset.gname] = i.value.trim() || s.names[i.dataset.gname]; }));
     for (const m of pane.querySelectorAll('[data-planet]')) m.addEventListener('change', () => editGroups((s) => {
@@ -665,7 +677,8 @@
       out.machines.push({
         surface: str(g.surface, 60), name: str(g.name), type: str(g.type), quality: str(g.quality, 20) || 'normal',
         recipe: str(g.recipe), miningTarget: str(g.mining_target), modules: str(g.modules, 300),
-        count: num0(g.count), status, beacons: num0(g.beacons_avg), productivity: num0(g.productivity_bonus_avg), speed: num0(g.speed_bonus_avg),
+        count: num0(g.count), pos: Array.isArray(g.pos) ? g.pos.slice(0, 40000).filter(Number.isFinite).map(Math.round) : [],
+        status, beacons: num0(g.beacons_avg), productivity: num0(g.productivity_bonus_avg), speed: num0(g.speed_bonus_avg),
       });
     }
     for (const [sn, st] of Object.entries(isObj(raw.stats) ? raw.stats : {}).slice(0, 50)) {
@@ -786,9 +799,10 @@
         factory = cleanFactory(JSON.parse(await file.text()));
         facSurface = '';
         factoryPanel();
+        groupsPanel();
       } catch (e) { factoryPanel(); $('facmsg').textContent = 'Import failed: ' + e.message; }
     });
-    if (c) c.addEventListener('click', () => { factory = null; factoryPanel(); });
+    if (c) c.addEventListener('click', () => { factory = null; factoryPanel(); groupsPanel(); });
   }
 
   // ---- State: URL hash, JSON export and import (step 8) ----

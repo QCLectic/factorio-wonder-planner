@@ -31,6 +31,7 @@ def main():
         "/*SOLVER*/": read("src/solver.js"),
         "/*LAYOUT*/": read("src/layout.js"),
         "/*GROUPS*/": read("src/groups.js"),
+        "/*SEED*/": read("src/seed.js"),
         "/*APP*/": read("src/app.js"),
     }
     for marker, body in parts.items():

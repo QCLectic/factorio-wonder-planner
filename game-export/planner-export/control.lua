@@ -6,7 +6,7 @@
 --   game_version, tick, mods
 --   machines: one entry per group of identical machines
 --     { surface, name, type, quality, recipe, recipe_quality, modules = {"name@quality=count"},
---       beacons, status = {status_name = count}, count, products_finished, speed_bonus_avg,
+--       beacons, status = {status_name = count}, count, products_finished, speed_bonus_avg, pos = {x1,y1,x2,y2,...},
 --       productivity_bonus_avg, mining_target }
 --   stats[surface] = { items = {name = {produced, consumed, produced_per_s, consumed_per_s}}, window_s }
 --     produced and consumed are totals since the save began. The per second values average the last
@@ -15,6 +15,7 @@
 
 local MACHINE_TYPES = { "assembling-machine", "furnace", "rocket-silo", "mining-drill", "offshore-pump" }
 local STATS_WINDOW_S = 600
+local MAX_POSITIONS_PER_GROUP = 20000
 
 local status_name = {}
 for name, id in pairs(defines.entity_status) do status_name[id] = name end
@@ -73,12 +74,17 @@ local function export()
           surface = surface.name, name = e.name, type = e.type, quality = e.quality.name,
           recipe = recipe_name, recipe_quality = recipe_quality, modules = mods,
           mining_target = target, status = {}, count = 0, products_finished = 0,
-          speed_bonus_sum = 0, productivity_bonus_sum = 0, beacons = 0,
+          speed_bonus_sum = 0, productivity_bonus_sum = 0, beacons = 0, pos = {},
         }
         groups[key] = g
         out.machines[#out.machines + 1] = g
       end
       g.count = g.count + 1
+      -- Flat list x1, y1, x2, y2 ... in whole tiles. Capped so a huge base cannot make a huge file.
+      if #g.pos < 2 * MAX_POSITIONS_PER_GROUP then
+        g.pos[#g.pos + 1] = math.floor(e.position.x)
+        g.pos[#g.pos + 1] = math.floor(e.position.y)
+      end
       local s = status_name[e.status] or "unknown"
       g.status[s] = (g.status[s] or 0) + 1
       if e.type == "assembling-machine" or e.type == "furnace" or e.type == "rocket-silo" then
