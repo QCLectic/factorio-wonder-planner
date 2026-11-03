@@ -41,6 +41,25 @@ After you import an export, the Groups tab has **Seed from my save**. It cuts yo
 
 How it stays safe: the script copies the save, runs the game in benchmark mode with a private config and a private data folder, and deletes everything afterward. Your saves, mods and settings are not used or changed. The copy loads with a small script mod, which would disable achievements in a normal session, so only ever use this tool, not that mod, on a save you play. The file stays in the page and is not put in the link. Saves with mods other than the five official ones are not supported yet.
 
+## Use it from Claude (MCP server)
+
+`mcp/server.js` lets Claude run the same planner. No packages. It needs Node 18 or later.
+
+Tools, all read only:
+- `search_items`: find exact item names.
+- `get_recipe`: recipe data, machines, and the research that unlocks it.
+- `plan`: targets and rates in, machines, raw inputs, power and oil balance out. Settings cover planet, machine tiers, modules, beacons, alternate recipes and research.
+- `propose_groups`: groups with planet tags and imports between planets. With `export_path` it seeds groups from a save export.
+- `compare_factory`: compare a plan with a save export (`export_path`).
+
+Setup in Claude Code: the repo has a `.mcp.json`, so open Claude Code in this folder and approve the `factorio-planner` server. For another folder or for Claude desktop, register the server with an absolute path:
+
+```bash
+claude mcp add factorio-planner -- node /full/path/to/mcp/server.js
+```
+
+Then ask for example: "Plan 1 chemical science pack per second, with productivity modules, and tell me how many machines I need on each planet." The server reads a file only when you give `export_path`, and only a planner export under 30 MB. It writes nothing. Test it with `node tests/mcp.test.js`.
+
 ## Update the game data
 
 1. Run `factorio --dump-data`. It writes `script-output/data-raw-dump.json` in the Factorio user data folder.

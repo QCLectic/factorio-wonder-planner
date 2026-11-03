@@ -32,6 +32,7 @@ def main():
         "/*LAYOUT*/": read("src/layout.js"),
         "/*GROUPS*/": read("src/groups.js"),
         "/*SEED*/": read("src/seed.js"),
+        "/*FACTORY*/": read("src/factory.js"),
         "/*APP*/": read("src/app.js"),
     }
     for marker, body in parts.items():

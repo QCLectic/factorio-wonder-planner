@@ -661,68 +661,7 @@
   // The file comes from tools/export_save.py. It is untrusted input, like a shared link, so
   // cleanFactory() keeps known fields only. It is kept in memory for this session and is NOT put in the URL.
   let factory = null, facSurface = '';
-  const STARVED = new Set(['item_ingredient_shortage', 'no_ingredients', 'fluid_ingredient_shortage', 'no_input_fluid', 'low_input_fluid', 'missing_required_fluid']);
-  const FULL = new Set(['full_output', 'not_enough_space_in_output', 'full_burnt_result_output', 'waiting_for_space_in_destination']);
-  const NOPOWER = new Set(['low_power', 'no_power', 'no_fuel']);
-  const num0 = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);
-  const str = (v, n) => (typeof v === 'string' ? v.slice(0, n || 80) : '');
-
-  function cleanFactory(raw) {
-    if (!isObj(raw) || raw.version !== 1 || !Array.isArray(raw.machines)) throw new Error('not a planner export file (version 1)');
-    const out = { tick: num0(raw.tick), gameVersion: str(raw.game_version, 20), machines: [], stats: {}, failures: isObj(raw.failures) ? Object.keys(raw.failures).slice(0, 20).map((k) => str(k, 60)) : [] };
-    for (const g of raw.machines.slice(0, 20000)) {
-      if (!isObj(g)) continue;
-      const status = {};
-      for (const [k, v] of Object.entries(isObj(g.status) ? g.status : {}).slice(0, 40)) status[str(k, 60)] = num0(v);
-      out.machines.push({
-        surface: str(g.surface, 60), name: str(g.name), type: str(g.type), quality: str(g.quality, 20) || 'normal',
-        recipe: str(g.recipe), miningTarget: str(g.mining_target), modules: str(g.modules, 300),
-        count: num0(g.count), pos: Array.isArray(g.pos) ? g.pos.slice(0, 40000).filter(Number.isFinite).map(Math.round) : [],
-        status, beacons: num0(g.beacons_avg), productivity: num0(g.productivity_bonus_avg), speed: num0(g.speed_bonus_avg),
-      });
-    }
-    for (const [sn, st] of Object.entries(isObj(raw.stats) ? raw.stats : {}).slice(0, 50)) {
-      const items = {};
-      for (const [n, v] of Object.entries(isObj(st.items) ? st.items : {}).slice(0, 3000)) {
-        if (isObj(v)) items[str(n)] = { produced: num0(v.produced), consumed: num0(v.consumed), producedPerS: num0(v.produced_per_s), consumedPerS: num0(v.consumed_per_s) };
-      }
-      out.stats[str(sn, 60)] = { items, windowS: num0(st.window_s) };
-    }
-    return out;
-  }
-
-  const emptyCls = () => ({ working: 0, starved: 0, full: 0, power: 0, depleted: 0, removing: 0, other: 0 });
-  const statusClass = (st) => {
-    const c = emptyCls();
-    for (const [k, v] of Object.entries(st)) {
-      if (k === 'working' || k === 'normal') c.working += v;
-      else if (STARVED.has(k)) c.starved += v;
-      else if (FULL.has(k)) c.full += v;
-      else if (NOPOWER.has(k)) c.power += v;
-      else if (k === 'no_minable_resources') c.depleted += v;
-      else if (k === 'marked_for_deconstruction') c.removing += v;
-      else c.other += v;
-    }
-    return c;
-  };
-  const STATUS_LABEL = { power: 'low power', full: 'output full', depleted: 'depleted', removing: 'marked for removal' };
-  const statusText = (c) => Object.keys(c).filter((k) => c[k]).map((k) => `${c[k]} ${STATUS_LABEL[k] || k}`).join(', ') || 'none';
-
-  // What the factory built, by plan key: recipe name, or "mine:<resource>" for drills.
-  function builtByKey() {
-    const m = {};
-    for (const g of factory.machines) {
-      if (facSurface && g.surface !== facSurface) continue;
-      const key = g.type === 'mining-drill' ? (g.miningTarget ? 'mine:' + g.miningTarget : '') : g.recipe;
-      if (!key) continue;
-      const e = m[key] || (m[key] = { count: 0, cls: emptyCls(), machines: {} });
-      e.count += g.count;
-      const c = statusClass(g.status);
-      for (const k of Object.keys(c)) e.cls[k] += c[k];
-      e.machines[g.name] = (e.machines[g.name] || 0) + g.count;
-    }
-    return m;
-  }
+  const { cleanFactory, statusText, emptyCls, compare, trace } = FPFactory;
 
   function factoryPanel() {
     const pane = $('pane-fac');
@@ -733,7 +672,7 @@
     if (!factory) { pane.innerHTML = '<h2>Your factory</h2>' + help + '<p id="facmsg" class="warn"></p>'; wireFactory(); return; }
     if (!plan) { pane.innerHTML = '<h2>Your factory</h2>' + help + '<p class="note">Pick a plan target first.</p>'; wireFactory(); return; }
     const surfaces = [...new Set(factory.machines.map((g) => g.surface))];
-    const built = builtByKey();
+    const cmp = compare(plan, factory, facSurface);
     let h = `<h2>Your factory</h2>${help}<p id="facmsg" class="warn"></p>
       <table><tr><td>Save time</td><td>${num(factory.tick / 60 / 3600)} h</td></tr>
       <tr><td>Machines</td><td>${num(factory.machines.reduce((a, g) => a + g.count, 0))}</td></tr>
@@ -742,43 +681,25 @@
     if (factory.failures.length) h += `<p class="note warn">Some values could not be read: ${factory.failures.map(esc).join(', ')}.</p>`;
 
     // Machines: plan vs built, one row per recipe or mine in the plan.
-    const planNodes = plan.nodes.filter((n) => (n.kind === 'recipe' || n.kind === 'mine') && n.machinesCeil > 0);
-    const rows = planNodes.map((n) => {
-      const key = n.kind === 'mine' ? 'mine:' + n.name : n.name;
-      const b = built[key] || { count: 0, cls: emptyCls(), machines: {} };
-      return { n, key, b, planned: n.machinesCeil, diff: b.count - n.machinesCeil };
-    });
-    const problem = (r) => (r.diff < 0 ? 2 : 0) + (r.b.cls.starved ? 1 : 0) + (r.b.cls.power ? 1 : 0);
-    rows.sort((a, b) => problem(b) - problem(a) || b.planned - a.planned);
+    const rows = cmp.rows;
     const label = (r) => (r.n.kind === 'mine' ? 'Mine ' : '') + pretty(r.n.name);
-    const producersOf = (item) => rows.filter((r) => r.n.outputs[item] > 0);
     h += `<h2>Machines: plan and built</h2><table>${rows.map((r) => {
       const verdict = r.diff < 0 ? `<span class="warn">${-r.diff} short</span>` : r.diff > 0 ? `+${r.diff}` : 'ok';
       let detail = '';
       if (r.b.cls.starved && r.n.kind === 'recipe') {
-        const rec = data.recipes[r.n.name];
-        const ing = (rec && rec.ingredients || []).map((e) => e.name);
-        detail = `<details><summary>${r.b.cls.starved} starved: trace inputs</summary>` + ing.map((item) => {
-          const prod = producersOf(item).filter((p) => p.key !== r.key);
-          return `<div class="note">${esc(pretty(item))}: ` + (prod.length ? prod.map((p) => `${esc(label(p))} ${p.b.count} of ${p.planned} built (${esc(statusText(p.b.cls))})`).join('; ') : 'not made in this plan (raw or imported)') + '</div>';
+        detail = `<details><summary>${r.b.cls.starved} starved: trace inputs</summary>` + trace(rows, r, data).map((t) => {
+          return `<div class="note">${esc(pretty(t.item))}: ` + (t.producers.length ? t.producers.map((p) => `${esc(label(p))} ${p.b.count} of ${p.planned} built (${esc(statusText(p.b.cls))})`).join('; ') : 'not made in this plan (raw or imported)') + '</div>';
         }).join('') + '</details>';
       }
       return `<tr><td>${esc(label(r))}${detail}</td><td>${r.b.count} / ${r.planned} ${verdict}<div class="note">${esc(statusText(r.b.cls))}</div></td></tr>`;
     }).join('')}</table>`;
 
     // Built but not in the plan.
-    const inPlan = new Set(rows.map((r) => r.key));
-    const extra = Object.entries(built).filter(([k]) => !inPlan.has(k)).sort((a, b) => b[1].count - a[1].count).slice(0, 12);
-    if (extra.length) h += `<h2>Built, not in this plan</h2><table>${extra.map(([k, v]) => `<tr><td>${esc(k.startsWith('mine:') ? 'Mine ' + pretty(k.slice(5)) : pretty(k))}</td><td>${v.count}</td></tr>`).join('')}</table>`;
+    const extra = cmp.extra.slice(0, 12);
+    if (extra.length) h += `<h2>Built, not in this plan</h2><table>${extra.map((x) => `<tr><td>${esc(x.key.startsWith('mine:') ? 'Mine ' + pretty(x.key.slice(5)) : pretty(x.key))}</td><td>${x.count}</td></tr>`).join('')}</table>`;
 
     // Measured production against the plan, for items the plan makes.
-    const planned = {};
-    for (const r of rows) for (const [item, v] of Object.entries(r.n.outputs)) planned[item] = (planned[item] || 0) + v;
-    const measured = {};
-    for (const [sn, st] of Object.entries(factory.stats)) {
-      if (facSurface && sn !== facSurface) continue;
-      for (const [item, v] of Object.entries(st.items)) measured[item] = (measured[item] || 0) + v.producedPerS;
-    }
+    const planned = cmp.planned, measured = cmp.measured;
     const items = Object.keys(planned).sort((a, b) => planned[b] - planned[a]).slice(0, 25);
     h += `<h2>Production: plan and measured (${unitName()})</h2><p class="note">Measured is the average of the last 10 game minutes, summed over the chosen surfaces.</p><table>${items.map((i) => {
       const m = measured[i] || 0, ratio = planned[i] ? m / planned[i] : 0;

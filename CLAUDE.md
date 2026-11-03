@@ -101,6 +101,12 @@ The first user is Q. The later goal is a public web tool for sharing.
 - Step 9 is mostly built. Wube's terms of service (read 2026-11-03 at factorio.com/terms-of-service) say nothing about recipe values or tools. They restrict distributing art assets, and commercial use needs Wube's consent (factorio@factorio.com). So: no icons or art, free tool, credit and trademark note in the About dialog. This is not legal advice. Open: Q should email Wube to confirm, especially before icons or any ads. Done: MIT LICENSE, README, About dialog (limits, privacy, data version 2.1.24), no local paths in the code, Factorio-like dark and orange theme (colors only). Open: the LICENSE holder reads "Factorio Planner authors", so Q picks a name. Not hosted yet. GitHub Pages needs a repo, and this folder is not a git repo. `AGENTS.md` is a copy of CLAUDE.md that is now out of date.
 - `--dump-data` works on the installed version, and the dump has surface conditions (see Planets).
 
+## MCP server (added after step 10)
+
+- `mcp/server.js`: stdio MCP server, hand written, no packages. Tools: search_items, get_recipe, plan, propose_groups, compare_factory. All read only. It uses the same `src/` code as the page: solver, groups, seed, and `src/factory.js` (the export reader and the plan versus factory compare, shared with the page). `.mcp.json` registers it for Claude Code in this folder.
+- Tested with `tests/mcp.test.js`: starts the real server, speaks the protocol, 14 checks. Not tested against a real MCP client yet (Claude Code or Claude desktop). Q should try it and say what breaks. The server echoes the client's protocol version and only uses basic features (initialize, tools/list, tools/call, ping).
+- Decisions: no SDK, to keep the repo free of packages. The default unit is per second. The server defaults to home planet nauvis like the page. `export_path` is the only way it reads a file.
+
 ## Working rules
 
 - Ask Q questions before any large build step. Wait for answers.

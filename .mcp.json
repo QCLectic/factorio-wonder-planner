@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "factorio-planner": {
+      "command": "node",
+      "args": ["mcp/server.js"]
+    }
+  }
+}
