@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factorio Planner</title>
+<style>
+/* Industrial dark theme: warm grey panels, cream text, orange accent. Colors only. No game art. */
+:root {
+  --bg: #1b1a1a; --panel: #2c2a29; --ink: #f2e3c6; --muted: #aa9d85; --line: #4b4643;
+  --accent: #e39827; --on-accent: #1b1a1a; --recipe: #38424c; --mine: #4d3f27; --ext: #5c2f2a; --tgt: #2f4a30; --sur: #3b3836;
+  --edge: #9a9080; --warn: #ff7a66; --cross: #ff6a55;
+}
+header { border-bottom: 2px solid var(--accent) !important; }
+header h1 { text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+header h1::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; background: var(--accent); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+header { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 16px; margin: 0 8px 0 0; }
+label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+input, select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 2px; background: var(--bg); color: var(--ink); }
+input[type=number] { width: 90px; }
+#item { width: 230px; }
+main { flex: 1; display: flex; min-height: 0; }
+#view { flex: 1; min-width: 0; position: relative; overflow: hidden; }
+#svg { width: 100%; height: 100%; cursor: grab; display: block; }
+#svg.drag { cursor: grabbing; }
+aside { width: 320px; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line); padding: 12px 16px; }
+aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px; }
+aside h2:first-child { margin-top: 0; }
+table { width: 100%; border-collapse: collapse; }
+td { padding: 2px 0; vertical-align: top; }
+td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 8px; }
+#tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+#tabs button { flex: 1; font: inherit; padding: 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); cursor: pointer; }
+#tabs button.on { background: var(--accent); color: var(--on-accent); font-weight: 700; border-color: var(--accent); }
+aside select { max-width: 170px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0; }
+#techs { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; margin-top: 6px; }
+#techs label { color: var(--ink); padding: 1px 0; }
+details { border-bottom: 1px solid var(--line); padding: 3px 0; }
+summary { cursor: pointer; font-weight: 600; }
+.gname { width: 100%; margin: 4px 0; }
+label.sm { padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); }
+dialog { max-width: 560px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+dialog h2, dialog h3 { margin: 8px 0 4px; }
+button.sm { font: inherit; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); cursor: pointer; }
+.box.group { stroke-width: 1.6; }
+.note { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.warn { color: var(--warn); }
+.box { stroke: var(--line); stroke-width: 1.2; }
+.box.recipe { fill: var(--recipe); } .box.mine, .box.pump { fill: var(--mine); }
+.box.external { fill: var(--ext); } .box.target { fill: var(--tgt); } .box.surplus { fill: var(--sur); }
+.node { cursor: pointer; }
+.node.sel .box { stroke: var(--accent); stroke-width: 2.5; }
+.node text { fill: var(--ink); pointer-events: none; }
+.t1 { font-size: 13px; font-weight: 600; } .t2 { font-size: 11.5px; fill: var(--muted) !important; }
+.edge { fill: none; stroke: var(--edge); opacity: .55; }
+.edge.back { stroke-dasharray: 5 4; }
+.edge.cross { stroke: var(--cross); opacity: .8; stroke-dasharray: 2 4; }
+.edge.hl { stroke: var(--accent); opacity: 1; }
+.elabel { font-size: 10.5px; fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; pointer-events: none; }
+.hint { position: absolute; left: 12px; bottom: 8px; color: var(--muted); font-size: 12px; }
+@media (max-width: 800px) { main { flex-direction: column; } aside { width: auto; max-height: 40%; border-left: 0; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Factorio Planner</h1>
+  <label>Item <input id="item" list="items" placeholder="e.g. chemical-science-pack" autocomplete="off"></label>
+  <datalist id="items"></datalist>
+  <label>Rate <input id="rate" type="number" min="0" step="any" value="1"></label>
+  <select id="unit"><option value="1">/s</option><option value="60">/min</option><option value="3600">/h</option></select>
+  <label>Sources <select id="src"></select></label>
+  <label>View <select id="viewmode"><option value="machines">Machines</option><option value="groups">Groups</option></select></label>
+  <label><input id="labels" type="checkbox" checked> Link labels</label>
+  <button class="sm" id="lnk" title="Copy a link that restores this plan">Copy link</button>
+  <button class="sm" id="exp">Export JSON</button>
+  <label class="sm" style="cursor:pointer">Import JSON <input id="imp" type="file" accept=".json,application/json" hidden></label>
+  <span class="note" id="flash"></span>
+  <button class="sm" id="aboutbtn">About</button>
+  <span class="note">Spoilage (Gleba) is not supported.</span>
+</header>
+<main>
+  <div id="view">
+    <svg id="svg"></svg>
+    <div class="hint">Drag to pan. Wheel to zoom. Click a box to see its links.</div>
+  </div>
+  <aside>
+    <nav id="tabs"><button data-tab="plan" class="on">Plan</button><button data-tab="grp">Groups</button><button data-tab="set">Settings</button></nav>
+    <div id="pane-plan"></div>
+    <div id="pane-grp" hidden></div>
+    <div id="pane-set" hidden></div>
+  </aside>
+</main>
+<dialog id="about">
+  <h2>About Factorio Planner</h2>
+  <p>An unofficial fan tool for Factorio 2.x with Space Age. It is not made by or affiliated with Wube Software. Factorio is a trademark of Wube Software Ltd.</p>
+  <p id="aboutdata"></p>
+  <p>The data comes from the game's own data dump. This page contains no game art, icons, or sounds.</p>
+  <h3>Limits</h3>
+  <ul>
+    <li>Gleba spoilage is not supported.</li>
+    <li>Not modeled: quality module output, drill quality, boiler steam, uranium mining acid, oil field yield other than 100%, and how items travel between planets.</li>
+    <li>Quality bonuses (+30% per level) come from the wiki, not the data dump. Beacon power is an upper bound.</li>
+    <li>Results are checked against hand-derived ratios, not yet against Factorio Lab or the wiki. Check important numbers yourself.</li>
+  </ul>
+  <h3>Privacy</h3>
+  <p>Everything runs in your browser. Nothing is sent anywhere. A shared link holds your whole plan in the part after the #, which servers do not receive.</p>
+  <p>Code license: MIT. Game data and names belong to Wube.</p>
+  <form method="dialog"><button class="sm">Close</button></form>
+</dialog>
+<script>/*DATA*/</script>
+<script>/*LP*/</script>
+<script>/*SOLVER*/</script>
+<script>/*LAYOUT*/</script>
+<script>/*GROUPS*/</script>
+<script>/*APP*/</script>
+</body>
+</html>
