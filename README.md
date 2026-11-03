@@ -11,6 +11,7 @@ Open `dist/factorio-planner.html`. Pick an item and a rate. The page shows the p
 - **Settings tab:** machine tiers, research limits, alternate recipes, modules, beacons, quality.
 - **Groups tab and Groups view:** named sets of machines with their own inputs and outputs. The tool proposes groups. You can move machines, merge, and rename.
 - **Planets:** each group has a planet tag. Items that cross planets show as imports.
+- **Several targets:** "+ Target" adds more items. All are planned together, and shared ingredients are counted once.
 - **Sharing:** the URL holds the whole plan. Copy link, Export JSON, and Import JSON are in the header.
 
 ## Build

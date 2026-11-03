@@ -56,6 +56,18 @@
   }
   const EXAMPLES = ['chemical-science-pack', 'utility-science-pack', 'rocket-part', 'electric-furnace', 'processing-unit'];
   const esc2 = (t) => String(t).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+  // Extra target rows under the first one: item, rate, remove.
+  function renderExtra() {
+    const box = $('extra');
+    box.innerHTML = cfg.extra.map((x, k) => `<div class="xrow"><span class="note">Target ${k + 2}</span>
+      <input class="xitem" list="items" data-k="${k}" value="${esc2(x.item)}" placeholder="Item" aria-label="Item for target ${k + 2}">
+      <input class="xrate" type="number" min="0" step="any" data-k="${k}" value="${x.rate}" aria-label="Rate for target ${k + 2}">
+      <span class="note">${unitName()}</span>
+      <button class="sm" data-rm="${k}" aria-label="Remove target ${k + 2}" title="Remove this target">&times;</button></div>`).join('');
+    for (const i of box.querySelectorAll('.xitem')) i.addEventListener('change', () => { cfg.extra[+i.dataset.k].item = i.value; run(); });
+    for (const i of box.querySelectorAll('.xrate')) i.addEventListener('change', () => { cfg.extra[+i.dataset.k].rate = Number(i.value); run(); });
+    for (const b of box.querySelectorAll('[data-rm]')) b.addEventListener('click', () => { cfg.extra.splice(+b.dataset.rm, 1); renderExtra(); run(); });
+  }
   function showMessage(html) {
     svg.innerHTML = '';
     lay = null;
@@ -75,6 +87,7 @@
     mods: {}, nodeMods: {}, enabled: new Set(), disabled: new Set(),
     oil: { mode: 'auto', cracking: true },
     view: 'machines', source: '',
+    extra: [],
     groups: { rule: 'chain', manual: false, state: null },
   };
   const CRACKING = ['heavy-oil-cracking', 'light-oil-cracking'];
@@ -113,9 +126,24 @@
     }
     if (!(r > 0)) { showMessage('<p class="warn">Enter a rate above 0.</p>'); return; }
     if ($('item').value !== pretty(item)) $('item').value = pretty(item);
+    // Extra targets. A blank row is ignored. A bad row stops the run with a message.
+    const extras = [];
+    for (const [k, x] of cfg.extra.entries()) {
+      const t = x.item.trim();
+      if (!t) continue;
+      const id = resolveItem(t);
+      if (!id) {
+        const m = matchItems(t);
+        showMessage(`<p class="warn">Target ${k + 2}: no item matches "${esc2(t)}".</p>` + (m.length ? `<p class="note">Did you mean: ${m.map(pretty).join(', ')}</p>` : ''));
+        return;
+      }
+      if (!(x.rate > 0)) { showMessage(`<p class="warn">Target ${k + 2}: enter a rate above 0.</p>`); return; }
+      if (x.item !== pretty(id)) { x.item = pretty(id); renderExtra(); }
+      extras.push({ item: id, rate: x.rate / unitMul() });
+    }
     const t0 = performance.now();
     const keep = selected;
-    plan = FPSolver.solve(data, { item, rate: r, settings: solverSettings() });
+    plan = FPSolver.solve(data, { targets: [{ item, rate: r }].concat(extras), settings: solverSettings() });
     if (!plan.ok) { svg.innerHTML = ''; $('pane-plan').innerHTML = `<p class="warn">No solution (${plan.status || 'unknown'}).</p>`; return; }
     // Groups: automatic proposals follow the plan. After a manual edit the user's assignments stay.
     const gs = cfg.groups.manual ? FPGroups.reconcile(plan, cfg.groups.state) : FPGroups.propose(plan, cfg.groups.rule, data);
@@ -123,7 +151,7 @@
     cfg.groups.state = gp.state;
     lay = FPLayout.layout(cfg.view === 'groups' ? gp.plan : plan);
     // A new target or view starts from the automatic layout. Otherwise moved boxes stay where they are.
-    const fitKey = item + '|' + cfg.view;
+    const fitKey = [item].concat(extras.map((x) => x.item)).join(',') + '|' + cfg.view;
     const fresh = fitKey !== lastFitKey;
     lastFitKey = fitKey;
     if (fresh) for (const k of Object.keys(offsets)) delete offsets[k];
@@ -295,12 +323,13 @@
     const u = unitName();
     const rows = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1])
       .map(([k, v]) => `<tr><td>${pretty(k)}</td><td>${rate(v)}${u}</td></tr>`).join('') || '<tr><td class="note">none</td><td></td></tr>';
-    const realNodes = plan.nodes.filter((n) => n.kind !== 'external');
     let banner = '';
-    if (!realNodes.length) banner += `<p class="warn">Nothing to plan. ${pretty(plan.target)} has no recipe, mine or pump in the game data, so it is only an external input.</p>`;
-    if (plan.target === 'spoilage' || plan.nodes.some((n) => n.inputs.spoilage || n.outputs.spoilage)) banner += '<p class="warn">This plan involves Gleba spoilage, which is not supported. Treat it as incomplete.</p>';
+    for (const t of Object.keys(plan.targets)) {
+      if (plan.external[t] > 0 && !plan.nodes.some((n) => n.kind !== 'external' && n.outputs[t])) banner += `<p class="warn">Nothing to plan for ${pretty(t)}. It has no recipe, mine or pump in the game data, so it is only an external input.</p>`;
+    }
+    if ('spoilage' in plan.targets || plan.nodes.some((n) => n.inputs.spoilage || n.outputs.spoilage)) banner += '<p class="warn">This plan involves Gleba spoilage, which is not supported. Treat it as incomplete.</p>';
     let h = `${banner}<h2>Plan</h2><table>
-      <tr><td>Target</td><td>${pretty(plan.target)} ${rate(plan.rate)}${u}</td></tr>
+      ${Object.entries(plan.targets).map(([t, v]) => `<tr><td>Target</td><td>${pretty(t)} ${rate(v)}${u}</td></tr>`).join('')}
       <tr><td>Electric power</td><td>${power(plan.powerW)}</td></tr>
       ${plan.fuelW ? `<tr><td>Burner fuel</td><td>${power(plan.fuelW)}</td></tr>` : ''}
       <tr><td>Solve time</td><td>${plan.ms.toFixed(0)} ms</td></tr></table>`;
@@ -634,7 +663,7 @@
     };
     if (cfg.limitResearch) c.researched = [...cfg.researched];
     if (cfg.groups.manual && cfg.groups.state) c.groups = cfg.groups.state;
-    return { v: STATE_VERSION, item: resolveItem($('item').value) || '', rate: Number($('rate').value), unit: $('unit').value, labels: $('labels').checked, cfg: c };
+    return { v: STATE_VERSION, item: resolveItem($('item').value) || '', rate: Number($('rate').value), extra: cfg.extra.map((x) => ({ item: resolveItem(x.item) || '', rate: x.rate })).filter((x) => x.item), unit: $('unit').value, labels: $('labels').checked, cfg: c };
   }
 
   function cleanSpec(x) {
@@ -657,6 +686,9 @@
     o.rate = Number.isFinite(raw.rate) && raw.rate > 0 ? raw.rate : 1;
     o.unit = UNITS.includes(String(raw.unit)) ? String(raw.unit) : '1';
     o.labels = raw.labels !== false;
+    o.extra = (Array.isArray(raw.extra) ? raw.extra : []).slice(0, 9)
+      .filter((x) => isObj(x) && typeof x.item === 'string' && names.includes(x.item) && Number.isFinite(x.rate) && x.rate > 0)
+      .map((x) => ({ item: x.item, rate: x.rate }));
     const machOk = (v) => typeof v === 'string' && (data.machines[v] || data.mining_drills[v]);
     const mapOf = (x) => Object.fromEntries(Object.entries(isObj(x) ? x : {}).filter(([k, v]) => k.length < 100 && machOk(v)));
     o.machineByCategory = mapOf(c.machineByCategory);
@@ -689,6 +721,8 @@
   function applyState(o) {
     if (o.item) $('item').value = pretty(o.item);
     $('rate').value = o.rate; $('unit').value = o.unit; $('labels').checked = o.labels;
+    cfg.extra = o.extra.map((x) => ({ item: pretty(x.item), rate: x.rate }));
+    renderExtra();
     Object.assign(cfg, {
       machineByCategory: o.machineByCategory, machines: o.machines, drill: o.drill, limitResearch: o.limitResearch,
       researched: new Set(o.researched), mods: o.mods, nodeMods: o.nodeMods, enabled: new Set(o.enabled),
@@ -777,6 +811,13 @@
   $('aboutdata').textContent = 'Game data: Factorio ' + (data._meta.source_game_version || 'version unknown') + ' with Space Age, no mods.';
   $('aboutbtn').addEventListener('click', () => $('about').showModal());
   $('item').addEventListener('change', () => { selected = null; });
+  $('addt').addEventListener('click', () => {
+    if (cfg.extra.length >= 9) { flash('Up to 10 targets.'); return; }
+    cfg.extra.push({ item: '', rate: 1 });
+    renderExtra();
+    const last = document.querySelectorAll('.xitem'); last[last.length - 1].focus();
+  });
+  $('unit').addEventListener('change', renderExtra);
   $('viewmode').addEventListener('change', (ev) => { cfg.view = ev.target.value; selected = null; run(); });
   // Sources: any planet (Nauvis preferred) or one planet only.
   $('src').innerHTML = '<option value="">Any planet</option>' +

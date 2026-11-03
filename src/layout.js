@@ -35,7 +35,7 @@
 
   function layout(plan) {
     const nodes = plan.nodes.map((n) => ({ id: n.id, ref: n }));
-    if (plan.links.some((l) => l.to === 'target')) nodes.push({ id: 'target', ref: { kind: 'target', name: plan.target } });
+    if (plan.links.some((l) => l.to === 'target')) nodes.push({ id: 'target', ref: { kind: 'target', name: plan.targets && Object.keys(plan.targets).length > 1 ? Object.keys(plan.targets).length + ' items' : plan.target } });
     if (plan.links.some((l) => l.to === 'surplus')) nodes.push({ id: 'surplus', ref: { kind: 'surplus', name: 'surplus' } });
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const links = plan.links.filter((l) => byId.has(l.from) && byId.has(l.to) && l.from !== l.to);

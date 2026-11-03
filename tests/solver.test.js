@@ -335,5 +335,34 @@ test('home = nauvis still mines off-world resources when nothing at home makes t
   assert.deepStrictEqual(Object.keys(p.external), []);
 });
 
+// ---- Several targets ----
+test('two targets: raw inputs equal the sum of the separate plans, and each gets a link to the target', () => {
+  const s = { home: 'nauvis' };
+  const both = solve(data, { targets: [{ item: 'electronic-circuit', rate: 2 }, { item: 'iron-gear-wheel', rate: 3 }], settings: s });
+  const a = solve(data, { item: 'electronic-circuit', rate: 2, settings: s });
+  const b = solve(data, { item: 'iron-gear-wheel', rate: 3, settings: s });
+  assert.ok(both.ok);
+  near(both.raw['iron-ore'], a.raw['iron-ore'] + b.raw['iron-ore'], 1e-9, 'iron ore');
+  near(both.raw['copper-ore'], a.raw['copper-ore'], 1e-9, 'copper ore');
+  const into = Object.fromEntries(both.links.filter((l) => l.to === 'target').map((l) => [l.item, l.rate]));
+  near(into['electronic-circuit'], 2, 1e-9);
+  near(into['iron-gear-wheel'], 3, 1e-9);
+  assert.deepStrictEqual(both.targets, { 'electronic-circuit': 2, 'iron-gear-wheel': 3 });
+});
+
+test('a target that is also an ingredient of another target is not double counted', () => {
+  const p = solve(data, { targets: [{ item: 'iron-plate', rate: 1 }, { item: 'iron-gear-wheel', rate: 1 }], settings: {} });
+  near(p.raw['iron-ore'], 3, 1e-9, 'iron ore: 1 plate + 1 gear (2 plates)');
+  assert.deepStrictEqual(p.surplus, {});
+});
+
+test('a repeated target item adds up, and the old single-target call still works', () => {
+  const p = solve(data, { targets: [{ item: 'iron-plate', rate: 1 }, { item: 'iron-plate', rate: 2 }], settings: {} });
+  near(p.targets['iron-plate'], 3, 1e-9);
+  const q = solve(data, { item: 'iron-plate', rate: 3, settings: {} });
+  near(q.raw['iron-ore'], p.raw['iron-ore'], 1e-9);
+  assert.strictEqual(q.target, 'iron-plate');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

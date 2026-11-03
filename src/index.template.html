@@ -50,6 +50,11 @@ dialog h2, dialog h3 { margin: 8px 0 4px; }
 .node:focus-visible .box { stroke: var(--accent); stroke-width: 2.5; }
 .node { touch-action: none; }
 .chip { margin: 2px 2px 2px 0; }
+#extra { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; }
+#extra:empty { display: none; }
+.xrow { display: flex; align-items: center; gap: 6px; }
+.xitem { width: 230px; }
+.xrate { width: 90px; }
 button.sm { font: inherit; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); cursor: pointer; }
 .box.group { stroke-width: 1.6; }
 .note { color: var(--muted); font-size: 12px; margin: 4px 0; }
@@ -77,6 +82,8 @@ button.sm { font: inherit; padding: 2px 8px; border: 1px solid var(--line); bord
   <datalist id="items"></datalist>
   <label>Rate <input id="rate" type="number" min="0" step="any" value="1"></label>
   <select id="unit"><option value="1">/s</option><option value="60">/min</option><option value="3600">/h</option></select>
+  <button class="sm" id="addt" title="Plan several items at once">+ Target</button>
+  <div id="extra"></div>
   <label>Sources <select id="src"></select></label>
   <label>View <select id="viewmode"><option value="machines">Machines</option><option value="groups">Groups</option></select></label>
   <label><input id="labels" type="checkbox" checked> Link labels</label>

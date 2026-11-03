@@ -348,9 +348,17 @@
 
   function solve(data, req) {
     const settings = req.settings || {};
-    const target = req.item;
-    const rate = req.rate;                       // items per second
-    if (!(rate > 0)) throw new Error('rate must be > 0');
+    // One target (req.item, req.rate) or several (req.targets: [{item, rate}]). Rates are per second.
+    // A repeated item adds up. plan.target and plan.rate keep the first target for older callers.
+    const list = req.targets || [{ item: req.item, rate: req.rate }];
+    if (!list.length) throw new Error('no target');
+    const targets = {};
+    for (const t of list) {
+      if (!(t.rate > 0)) throw new Error('rate must be > 0');
+      targets[t.item] = (targets[t.item] || 0) + t.rate;
+    }
+    const target = list[0].item;
+    const rate = targets[target];
     const notes = [];
     const all = buildActivities(data, settings, notes);
 
@@ -364,7 +372,7 @@
 
     // Items with no usable producer become external inputs.
     const included = new Map();
-    const need = [target], seen = new Set([target]);
+    const need = Object.keys(targets), seen = new Set(need);
     while (need.length) {
       const item = need.pop();
       for (const a of (producers[item] || []).filter(usable)) {
@@ -385,23 +393,23 @@
     const noSource = [...seen].filter((i) => !(producers[i] || []).some(usable));
     let res, acts;
     for (const pass of [1, 2]) {
-      const ext = (pass === 1 ? noSource : [...seen].filter((i) => i !== target)).map(makeExt);
+      const ext = (pass === 1 ? noSource : [...seen].filter((i) => !(i in targets))).map(makeExt);
       acts = [...included.values(), ...ext];
-      res = runLP(acts, target, rate, settings);
+      res = runLP(acts, targets, settings);
       if (res.status === 'optimal') break;
     }
     if (res.status !== 'optimal') return { ok: false, status: res.status, notes };
-    return buildPlan(data, acts, res.x, target, rate, notes, settings);
+    return buildPlan(data, acts, res.x, targets, target, rate, notes, settings);
   }
 
-  function runLP(acts, target, rate, settings) {
+  function runLP(acts, targets, settings) {
     // LP rows: one per item that appears.
     const itemIdx = {};
     for (const a of acts) for (const i of [...Object.keys(a.inputs), ...Object.keys(a.outputs)]) {
       if (!(i in itemIdx)) itemIdx[i] = Object.keys(itemIdx).length;
     }
     const items = Object.keys(itemIdx);
-    const rows = items.map((i) => ({ a: {}, b: i === target ? rate : 0, op: '>=' }));
+    const rows = items.map((i) => ({ a: {}, b: targets[i] || 0, op: '>=' }));
     acts.forEach((a, k) => {
       for (const [i, v] of Object.entries(a.outputs)) rows[itemIdx[i]].a[k] = (rows[itemIdx[i]].a[k] || 0) + v;
       for (const [i, v] of Object.entries(a.inputs)) rows[itemIdx[i]].a[k] = (rows[itemIdx[i]].a[k] || 0) - v;
@@ -429,7 +437,7 @@
     return LP.solveLP(acts.length, c, rows);
   }
 
-  function buildPlan(data, acts, x, target, rate, notes, settings) {
+  function buildPlan(data, acts, x, targets, target, rate, notes, settings) {
     const nodes = [];
     acts.forEach((a, k) => {
       const crafts = x[k];
@@ -474,7 +482,7 @@
     }
     const surplus = {};
     for (const [i, v] of Object.entries(net)) {
-      const s = i === target ? v - rate : v;
+      const s = i in targets ? v - targets[i] : v;
       if (s > 1e-7) surplus[i] = s;
     }
 
@@ -488,7 +496,7 @@
     }
     for (const i of Object.keys(byItemProd)) {
       const sinks = (byItemCons[i] || []).slice();
-      if (i === target) sinks.push(['target', rate]);
+      if (i in targets) sinks.push(['target', targets[i]]);
       if (surplus[i]) sinks.push(['surplus', surplus[i]]);
       const total = byItemProd[i].reduce((s, p) => s + p[1], 0);
       const demand = sinks.reduce((s, p) => s + p[1], 0);
@@ -505,7 +513,7 @@
       powerW += n.powerW; fuelW += n.fuelW;
     }
     return {
-      ok: true, target, rate, nodes, links, raw, external, surplus,
+      ok: true, target, rate, targets, nodes, links, raw, external, surplus,
       machineTotals, powerW, fuelW, notes, settingsUsed: settings,
     };
   }
